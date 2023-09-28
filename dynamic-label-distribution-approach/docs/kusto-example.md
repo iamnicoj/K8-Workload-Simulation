@@ -1,7 +1,7 @@
 The following is a high level glimpse of an Az monitor Kusto query that filters by one the new Label we added to the target apps deployment called executionID (see the orange rectangle) and renders the average cpu consumption grouped by each of the containers of a specific scenario run. Following this pattern we can get many more filters and aggregations - although they may be some caveats and limitations we don't know yet.
 
 
-![alt text](aver-cpu-consumption-by-executionid.png)
+![alt text](../../assets/aver-cpu-consumption-by-executionid.png)
 
 
 The kusto query:
