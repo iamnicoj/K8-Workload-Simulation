@@ -1,0 +1,237 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: sim-scenario-stressor
+spec:
+  arguments:
+    parameters:
+    - name: app_kind
+      value: "deployment"
+    - name: app_namespace
+      value: "scenario-ns"
+    - name: chaos_namespace
+      value: "litmus"
+    - name: chaos_service_account
+      value: "argo-chaos"
+    - name: container_runtime
+      value: "containerd" # replace with 'docker' if running using docker-desktop
+    - name: socket_path
+      value: "/run/containerd/containerd.sock" # for AKS, else change to your local (e.g. "/run/k3s/containerd/containerd.sock" or "/var/run/docker.sock")
+    # - name: execution_id # execution-specific input
+    #   value: "12345678-5c02-4f7b-a339-a2135fc60d69"
+    - name: scenario_id # scenario-specific input
+      value: "10-interactive-ads-workloads"
+    - name: stressors_duration # scenario-specific input
+      value: "30"
+    - name: loop_number # scenario-specific input
+      value: "1"
+    - name: target_app_configs
+      value: |
+          [
+            { "size": "small", "workload_id": "small-interactive-ads", "instances": "1", "cpu_limit": "1000m", "memory_limit": "8Gi", "delay_min" : "0", "delay_max": "0", "pod_image": "nginx", "app_label": "app_label1" },
+            { "size": "medium", "workload_id": "medium-interactive-ads", "instances": "1", "cpu_limit": "2000m", "memory_limit": "16Gi" , "delay_min": "0", "delay_max": "0", "pod_image": "nginx", "app_label": "app_label2" },
+            { "size": "large", "workload_id": "large-interactive-ads", "instances": "1", "cpu_limit": "4000m", "memory_limit": "32Gi", "delay_min": "2", "delay_max": "2", "pod_image": "nginx" , "app_label": "app_label3" },
+            { "size": "x-large", "workload_id": "x-large-interactive-ads", "instances": "1", "cpu_limit": "8000m", "memory_limit": "64Gi" , "delay_min": "0", "delay_max": "2", "pod_image": "nginx", "app_label": "app_label4" },
+            { "size": "xx-large", "workload_id": "xx-large-interactive-ads", "instances": "1", "cpu_limit": "16000m", "memory_limit": "64Gi" , "delay_min": "0", "delay_max": "2", "pod_image": "nginx", "app_label": "app_label5" }
+          ]
+
+    - name: cpu_stressors
+      value: |
+          [
+            { "cpu_load_min": "0", "cpu_load_max": "1", "target_label": "cpu_stressor=1cpu" },
+            { "cpu_load_min": "1", "cpu_load_max": "2", "target_label": "cpu_stressor=2cpu" },
+            { "cpu_load_min": "2", "cpu_load_max": "5", "target_label": "cpu_stressor=5cpu" },
+            { "cpu_load_min": "5", "cpu_load_max": "10", "target_label": "cpu_stressor=10cpu" },
+            { "cpu_load_min": "10", "cpu_load_max": "25", "target_label": "cpu_stressor=25cpu" },
+            { "cpu_load_min": "25", "cpu_load_max": "50", "target_label": "cpu_stressor=50cpu" },
+            { "cpu_load_min": "50", "cpu_load_max": "75", "target_label": "cpu_stressor=75cpu" },
+            { "cpu_load_min": "75", "cpu_load_max": "100", "target_label": "cpu_stressor=100cpu" }
+          ]
+
+    - name: cpu_distribution_map
+      value: |
+          [
+            {"size": "small", "label": "cpu_stressor=1cpu", "percentage": "50"},
+            {"size": "small", "label": "cpu_stressor=2cpu", "percentage": "19"},
+            {"size": "small", "label": "cpu_stressor=5cpu", "percentage": "7"},
+            {"size": "small", "label": "cpu_stressor=10cpu", "percentage": "3"},
+            {"size": "small", "label": "cpu_stressor=25cpu", "percentage": "4"},
+            {"size": "small", "label": "cpu_stressor=50cpu", "percentage": "13"},
+            {"size": "small", "label": "cpu_stressor=75cpu", "percentage": "4"},
+            {"size": "medium", "label": "cpu_stressor=1cpu", "percentage": "59"},
+            {"size": "medium", "label": "cpu_stressor=2cpu", "percentage": "5"},
+            {"size": "medium", "label": "cpu_stressor=5cpu", "percentage": "5"},
+            {"size": "medium", "label": "cpu_stressor=10cpu", "percentage": "5"},
+            {"size": "medium", "label": "cpu_stressor=25cpu", "percentage": "5"},
+            {"size": "medium", "label": "cpu_stressor=50cpu", "percentage": "5"},
+            {"size": "medium", "label": "cpu_stressor=75cpu", "percentage": "11"},
+            {"size": "medium", "label": "cpu_stressor=100cpu", "percentage": "5"},
+            {"size": "large", "label": "cpu_stressor=1cpu", "percentage": "81"},
+            {"size": "large", "label": "cpu_stressor=2cpu", "percentage": "3"},
+            {"size": "large", "label": "cpu_stressor=5cpu", "percentage": "5"},
+            {"size": "large", "label": "cpu_stressor=10cpu", "percentage": "3"},
+            {"size": "large", "label": "cpu_stressor=25cpu", "percentage": "2"},
+            {"size": "large", "label": "cpu_stressor=50cpu", "percentage": "3"},
+            {"size": "large", "label": "cpu_stressor=75cpu", "percentage": "2"},
+            {"size": "large", "label": "cpu_stressor=100cpu", "percentage": "1"},
+            {"size": "x-large", "label": "cpu_stressor=1cpu", "percentage": "57"},
+            {"size": "x-large", "label": "cpu_stressor=2cpu", "percentage": "7"},
+            {"size": "x-large", "label": "cpu_stressor=5cpu", "percentage": "6"},
+            {"size": "x-large", "label": "cpu_stressor=10cpu", "percentage": "7"},
+            {"size": "x-large", "label": "cpu_stressor=25cpu", "percentage": "6"},
+            {"size": "x-large", "label": "cpu_stressor=50cpu", "percentage": "6"},
+            {"size": "x-large", "label": "cpu_stressor=75cpu", "percentage": "5"},
+            {"size": "x-large", "label": "cpu_stressor=100cpu", "percentage": "6"},
+            {"size": "xx-large", "label": "cpu_stressor=1cpu", "percentage": "86"},
+            {"size": "xx-large", "label": "cpu_stressor=2cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=5cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=10cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=25cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=50cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=75cpu", "percentage": "2"},
+            {"size": "xx-large", "label": "cpu_stressor=100cpu", "percentage": "2"}
+          ]
+
+    - name: mem_stressors
+      value: |
+          [
+            { "memory": "2", "target_label": "mem_stressor=2mem" },
+            { "memory": "5", "target_label": "mem_stressor=5mem" },
+            { "memory": "10", "target_label": "mem_stressor=10mem" },
+            { "memory": "25", "target_label": "mem_stressor=25mem" },
+            { "memory": "50", "target_label": "mem_stressor=50mem" },
+            { "memory": "75", "target_label": "mem_stressor=75mem" },
+            { "memory": "100", "target_label": "mem_stressor=100mem" }
+          ]
+
+    - name: mem_distribution_map
+      value: |
+          [
+            {"size": "small", "label": "mem_stressor=2mem", "percentage": "24"},
+            {"size": "small", "label": "mem_stressor=5mem", "percentage": "31"},
+            {"size": "small", "label": "mem_stressor=10mem", "percentage": "25"},
+            {"size": "small", "label": "mem_stressor=25mem", "percentage": "13"},
+            {"size": "small", "label": "mem_stressor=50mem", "percentage": "5"},
+            {"size": "small", "label": "mem_stressor=75mem", "percentage": "1"},
+            {"size": "small", "label": "mem_stressor=100mem", "percentage": "1"},
+            {"size": "medium", "label": "mem_stressor=2mem", "percentage": "46"},
+            {"size": "medium", "label": "mem_stressor=5mem", "percentage": "23"},
+            {"size": "medium", "label": "mem_stressor=10mem", "percentage": "16"},
+            {"size": "medium", "label": "mem_stressor=25mem", "percentage": "8"},
+            {"size": "medium", "label":"mem_stressor=50mem", "percentage": "7"},
+            {"size": "large", "label": "mem_stressor=2mem", "percentage": "46"},
+            {"size": "large", "label": "mem_stressor=5mem", "percentage": "14"},
+            {"size": "large", "label": "mem_stressor=10mem", "percentage": "9"},
+            {"size": "large", "label": "mem_stressor=25mem", "percentage": "16"},
+            {"size": "large", "label": "mem_stressor=50mem", "percentage": "9"},
+            {"size": "large", "label": "mem_stressor=75mem", "percentage": "2"},
+            {"size": "large", "label": "mem_stressor=100mem", "percentage": "4"},
+            {"size": "x-large", "label": "mem_stressor=2mem", "percentage": "65"},
+            {"size": "x-large", "label": "mem_stressor=5mem", "percentage": "7"},
+            {"size": "x-large", "label": "mem_stressor=10mem", "percentage": "7"},
+            {"size": "x-large", "label": "mem_stressor=25mem", "percentage": "14"},
+            {"size": "x-large", "label": "mem_stressor=50mem", "percentage": "7"},
+            {"size": "xx-large", "label": "mem_stressor=2mem", "percentage": "70"},
+            {"size": "xx-large", "label": "mem_stressor=5mem", "percentage": "19"},
+            {"size": "xx-large", "label": "mem_stressor=10mem", "percentage": "7"},
+            {"size": "xx-large", "label": "mem_stressor=25mem", "percentage": "2"},
+            {"size": "xx-large", "label": "mem_stressor=50mem", "percentage": "2"}
+          ]
+
+  entrypoint: main # defines the top-level sequence of steps
+  templates:
+    - name: main
+      steps:
+      - - name: create-execution-id
+          templateRef:
+            name: random-execution-id
+            template: execution-id
+      - - name: create-app-namespace # create namespace for scenario pods
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{workflow.parameters.app_namespace}}"
+          templateRef:
+            name: deployment-deploy-app-namespace
+            template: deploy-app-namespace
+      - - name: app-manager
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{workflow.parameters.app_namespace}}"
+            - name: execution_id
+              value: "{{steps.create-execution-id.outputs.result}}"
+            - name: scenario_id
+              value: "{{workflow.parameters.scenario_id}}"
+            - name: size
+              value: "{{item.size}}"
+            - name: workload_id
+              value: "{{item.workload_id}}"
+            - name: instances
+              value: "{{item.instances}}"
+            - name: cpu_limit
+              value: "{{item.cpu_limit}}"
+            - name: memory_limit
+              value: "{{item.memory_limit}}"
+            - name: delay_min
+              value: "{{item.delay_min}}"
+            - name: delay_max
+              value: "{{item.delay_max}}"
+            - name: pod_image
+              value: "{{item.pod_image}}"
+            - name: app_label
+              value: "{{item.app_label}}"
+          templateRef:
+            name: deploy-execute-app-manager
+            template: execute-app-manager
+          withParam: "{{workflow.parameters.target_app_configs}}"
+        - name: label-stress-manager
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{workflow.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{workflow.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{workflow.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{workflow.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{steps.create-execution-id.outputs.result}}"
+            - name: container_runtime
+              value: "{{workflow.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{workflow.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{workflow.parameters.stressors_duration}}"
+            - name: loop_number
+              value: "{{workflow.parameters.loop_number}}"
+            - name: cpu_stressors
+              value: "{{workflow.parameters.cpu_stressors}}"
+            - name: cpu_distribution_map
+              value: "{{workflow.parameters.cpu_distribution_map}}"
+            - name: mem_stressors
+              value: "{{workflow.parameters.mem_stressors}}"
+            - name: mem_distribution_map
+              value: "{{workflow.parameters.mem_distribution_map}}"
+          templateRef:
+            name: deploy-execute-label-stress-looper-sl
+            template: execute-label-stress-looper-sl
+      - - name: delete-app-namespace # delete namespace for scenario pods
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{workflow.parameters.app_namespace}}"
+          templateRef:
+            name: deployment-delete-app-namespace
+            template: delete-app-namespace
+      - - name: revert-chaos # delete the created ChaosEngines
+          arguments:
+            parameters:
+            - name: execution_id
+              value: "{{steps.create-execution-id.outputs.result}}"
+            - name: chaos_namespace
+              value: "{{workflow.parameters.chaos_namespace}}"
+          templateRef:
+            name: deployment-revert-chaos
+            template: revert-chaos

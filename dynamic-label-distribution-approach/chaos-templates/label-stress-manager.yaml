@@ -1,0 +1,137 @@
+# deploy-execute-label-stress-looper
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deploy-execute-label-stress-looper-sl
+spec:
+  entrypoint: execute-label-stress-looper-sl
+  templates:
+    - name: execute-label-stress-looper-sl
+      parallelism: 1
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: stressors_duration
+        - name: loop_number
+        - name: cpu_stressors
+        - name: cpu_distribution_map
+        - name: mem_stressors
+        - name: mem_distribution_map
+      steps:
+      - - name: delay
+          templateRef:
+            name: delay-helper
+            template: delay
+          arguments:
+            parameters:
+            - name: duration
+              value: "20"
+      - - name: gen-number-list
+          templateRef:
+            name: gen-number-list-helper
+            template: gen-number-list
+          arguments:
+            parameters:
+            - name: max-number
+              value: "{{inputs.parameters.loop_number}}"
+      - - name: deploy-execute-label-stress-manager-sl
+          templateRef:
+            name: deploy-execute-label-stress-manager-sl
+            template: execute-label-stress-manager-sl
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+            - name: cpu_stressors
+              value: "{{inputs.parameters.cpu_stressors}}"
+            - name: cpu_distribution_map
+              value: "{{inputs.parameters.cpu_distribution_map}}"
+            - name: mem_stressors
+              value: "{{inputs.parameters.mem_stressors}}"
+            - name: mem_distribution_map
+              value: "{{inputs.parameters.mem_distribution_map}}"
+          withParam: "{{steps.gen-number-list.outputs.result}}"
+---
+# deploy-execute-label-stress-manager
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deploy-execute-label-stress-manager-sl
+spec:
+  entrypoint: execute-label-stress-manager-sl
+  templates:
+    - name: execute-label-stress-manager-sl
+      # parallelism: 1
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: stressors_duration
+        - name: cpu_stressors
+        - name: cpu_distribution_map
+        - name: mem_stressors
+        - name: mem_distribution_map
+      steps:
+      - - name: label-manager
+          templateRef:
+            name: execute-labels-manager-sl
+            template: execute-labels-manager-sl
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: cpu_distribution_map
+              value: "{{inputs.parameters.cpu_distribution_map}}"
+            - name: mem_distribution_map
+              value: "{{inputs.parameters.mem_distribution_map}}"
+      - - name: stressor-manager
+          templateRef:
+            name: execute-stressors-manager
+            template: execute-stressors-manager
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+            - name: cpu_stressors
+              value: "{{inputs.parameters.cpu_stressors}}"
+            - name: mem_stressors
+              value: "{{inputs.parameters.mem_stressors}}"

@@ -1,0 +1,200 @@
+# deploy-execute-app-manager
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deploy-execute-app-manager
+spec:
+  entrypoint: execute-app-manager
+  templates:
+    - name: execute-app-manager
+      parallelism: 1
+      inputs:
+        parameters:
+        - name: app_namespace
+        - name: execution_id
+        - name: scenario_id
+        - name: size
+        - name: workload_id
+        - name: instances
+        - name: cpu_limit
+        - name: memory_limit
+        - name: delay_min
+        - name: delay_max
+        - name: pod_image
+        - name: app_label
+      steps:
+      - - name: gen-number-list
+          templateRef:
+            name: gen-number-list-helper
+            template: gen-number-list
+          arguments:
+            parameters:
+            - name: max-number
+              value: "{{inputs.parameters.instances}}"
+      - - name: execute-deploy-pods
+          templateRef:
+            name: deploy-delay-pods
+            template: deploy-delay-pod
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: scenario_id
+              value: "{{inputs.parameters.scenario_id}}"
+            - name: size
+              value: "{{inputs.parameters.size}}"
+            - name: workload_id
+              value: "{{inputs.parameters.workload_id}}"
+            - name: instance
+              value: "{{item}}"
+            - name: cpu_limit
+              value: "{{inputs.parameters.cpu_limit}}"
+            - name: memory_limit
+              value: "{{inputs.parameters.memory_limit}}"
+            - name: delay_min
+              value: "{{inputs.parameters.delay_min}}"
+            - name: delay_max
+              value: "{{inputs.parameters.delay_max}}"
+            - name: pod_image
+              value: "{{inputs.parameters.pod_image}}"
+            - name: app_label
+              value: "{{inputs.parameters.app_label}}"
+          withParam: "{{steps.gen-number-list.outputs.result}}"
+---
+# deploy-delay-pods
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deploy-delay-pods
+spec:
+  entrypoint: deploy-delay-pod
+  templates:
+    - name: deploy-delay-pod
+      inputs:
+        parameters:
+        - name: app_namespace
+        - name: execution_id
+        - name: scenario_id
+        - name: size
+        - name: workload_id
+        - name: instance
+        - name: cpu_limit
+        - name: memory_limit
+        - name: delay_min
+        - name: delay_max
+        - name: pod_image
+        - name: app_label
+      steps:
+      - - name: deploy-pods
+          templateRef:
+            name: workload-deploy-pod
+            template: deploy-pod
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: scenario_id
+              value: "{{inputs.parameters.scenario_id}}"
+            - name: size
+              value: "{{inputs.parameters.size}}"
+            - name: workload_id
+              value: "{{inputs.parameters.workload_id}}"
+            - name: instance
+              value: "{{inputs.parameters.instance}}"
+            - name: cpu_limit
+              value: "{{inputs.parameters.cpu_limit}}"
+            - name: memory_limit
+              value: "{{inputs.parameters.memory_limit}}"
+            - name: pod_image
+              value: "{{inputs.parameters.pod_image}}"
+            - name: app_label
+              value: "{{inputs.parameters.app_label}}"
+      - - name: gen-random-number
+          templateRef:
+            name: value-in-range-helper
+            template: value-in-range
+          arguments:
+            parameters:
+            - name: min
+              value: "{{inputs.parameters.delay_min}}"
+            - name: max
+              value: "{{inputs.parameters.delay_max}}"
+      - - name: delay
+          templateRef:
+            name: delay-helper
+            template: delay
+          arguments:
+            parameters:
+            - name: duration
+              value: "{{steps.gen-random-number.outputs.result}}"
+---
+# workload-deploy-pod
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: workload-deploy-pod # deploy an nginx target app
+spec:
+  entrypoint: deploy-pod
+  templates:
+    - name: deploy-pod
+      inputs:
+        parameters:
+        - name: app_namespace
+        - name: execution_id
+        - name: scenario_id
+        - name: size
+        - name: workload_id
+        - name: instance
+        - name: cpu_limit
+        - name: memory_limit
+        - name: pod_image
+        - name: app_label
+        artifacts:
+          - name: target-app-pod
+            path: /tmp/nginx-{{inputs.parameters.workload_id}}-{{inputs.parameters.instance}}.yaml
+            raw:
+              data: |
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  name: {{inputs.parameters.workload_id}}-{{inputs.parameters.instance}}
+                  labels:
+                    app: {{inputs.parameters.app_label}}
+                    podGuid: {{inputs.parameters.workload_id}}-{{inputs.parameters.instance}}
+                    executionId: {{inputs.parameters.execution_id}}
+                    scenarioId: {{inputs.parameters.scenario_id}}
+                    workloadId: {{inputs.parameters.workload_id}}
+                    size: {{inputs.parameters.size}}
+                  annotations:
+                    prometheus.io/path: /metrics
+                    prometheus.io/port: "9090"
+                    prometheus.io/scheme: http
+                    prometheus.io/scrape: "true"
+                    litmuschaos.io/chaos: "true"
+                spec:
+                  containers:
+                  - name: {{inputs.parameters.workload_id}}
+                    image: {{inputs.parameters.pod_image}}
+                    ports:
+                    - containerPort: 80
+                    resources:
+                      requests:
+                        memory: {{inputs.parameters.memory_limit}}
+                        cpu: {{inputs.parameters.cpu_limit}}
+                      limits:
+                        memory: {{inputs.parameters.memory_limit}}
+                        cpu: {{inputs.parameters.cpu_limit}}
+                  nodeSelector:
+                    mode: ephemeral
+      container:
+        image: litmuschaos/k8s:latest
+        command:
+          - sh
+          - -c
+        args:
+          - "kubectl apply -f /tmp/nginx-{{inputs.parameters.workload_id}}-{{inputs.parameters.instance}}.yaml -n {{inputs.parameters.app_namespace}} ; echo 'Deployed pod!'"
+
