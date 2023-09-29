@@ -1,0 +1,94 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: sim-scenario-
+spec:
+# TODO: define custom Litmus Chaos experiment/helper pod labels in the ChaosExperiment CRs (.spec.definition.labels)
+  arguments:
+    parameters:
+    - name: scenario_id # scenario-specific input
+      value: "10-interactive-ads-workloads" 
+    - name: execution_id # execution-specific input
+      value: "dc85707f-5c02-4f7b-a339-a2135fc60d69" 
+    - name: chaos_namespace
+      value: "litmus"
+    - name: chaos_service_account
+      value: "argo-chaos"
+    - name: app_namespace # scenario OR execution-specific input (one ns per scenario vs. one ns per execution?)
+      value: "scenario-ns"
+    - name: default_app_label
+      value: "nginx" # common target app label (app=nginx will target all pods of all configs in this yaml)
+    - name: app_kind
+      value: "deployment"
+    - name: container_runtime
+      value: "containerd" # replace with 'docker' if running using docker-desktop
+    - name: socket_path
+      value: "/run/containerd/containerd.sock" # for AKS, else change to your local (e.g. "/run/k3s/containerd/containerd.sock" or "/var/run/docker.sock")
+    - name: seq-list
+      value: |
+          [
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "20", "memory_bytes": "64", "duration_seconds": "60", "target_label": "app=nginx" }
+          ]
+    - name: target-app-configs # AKA workloads, since they represent the pods exhibiting the load/behaviors?
+      value: |
+          [
+            { "size": "small", "workload_id": "small-interactive-ads", "replicas": "6", "cpu_limit": "100m", "memory_limit": "128Mi" },
+            { "size": "medium", "workload_id": "medium-interactive-ads", "replicas": "1", "cpu_limit": "200m", "memory_limit": "128Mi" },
+            { "size": "large", "workload_id": "large-interactive-ads", "replicas": "1", "cpu_limit": "300m", "memory_limit": "256Mi" },
+            { "size": "x-large", "workload_id": "x-large-interactive-ads", "replicas": "2", "cpu_limit": "400m", "memory_limit": "512Mi" }
+          ]
+  entrypoint: main # defines the top-level sequence of steps
+  templates:
+  - name: main
+    steps:
+    - - name: deploy-target-apps # create the pods we will be injecting chaos into
+        arguments: 
+          parameters:
+          - name: app_namespace
+            value: "{{workflow.parameters.app_namespace}}"
+          - name: scenario_id
+            value: "{{workflow.parameters.scenario_id}}"
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: default_app_label
+            value: "{{workflow.parameters.default_app_label}}"
+          - name: target-app-configs
+            value: "{{workflow.parameters.target-app-configs}}"
+        templateRef:
+          name: execute-deploy-target-apps
+          template: deploy-target-apps
+    - - name: iterate-behaviors # iterate through the sequence of defined behaviors
+        arguments:
+          parameters:
+          - name: chaos_service_account
+            value: "{{workflow.parameters.chaos_service_account}}"
+          - name: chaos_namespace
+            value: "{{workflow.parameters.chaos_namespace}}"
+          - name: app_namespace
+            value: "{{workflow.parameters.app_namespace}}"
+          - name: app_kind
+            value: "{{workflow.parameters.app_kind}}"
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: container_runtime
+            value: "{{workflow.parameters.container_runtime}}"
+          - name: socket_path
+            value: "{{workflow.parameters.socket_path}}"
+          - name: seq-list
+            value: "{{workflow.parameters.seq-list}}"
+        templateRef:
+          name: execute-iterate-behaviors
+          template: iterate-behaviors
+    - - name: revert-chaos # delete the created ChaosEngines
+        arguments:
+          parameters:
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: chaos_namespace
+            value: "{{workflow.parameters.chaos_namespace}}"
+        templateRef:
+          name: execute-revert-chaos
+          template: revert-chaos
+
+
+

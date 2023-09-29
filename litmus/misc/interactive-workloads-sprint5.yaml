@@ -1,0 +1,142 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: sim-scenario-
+spec:
+# TODO: define custom Litmus Chaos experiment/helper pod labels in the ChaosExperiment CRs (.spec.definition.labels)
+  arguments:
+    parameters:
+    - name: scenario_id # scenario-specific input
+      value: "10-interactive-ads-workloads" 
+    # TODO add random execution_id if not provided - No hardcoded execution_id
+    - name: execution_id # execution-specific input
+      value: "12345678-5c02-4f7b-a339-a2135fc60d69" 
+      # TODO Test this on another namespace
+    - name: chaos_namespace
+      value: "litmus"
+    - name: chaos_service_account
+      value: "argo-chaos"
+    - name: app_namespace # scenario OR execution-specific input (one ns per scenario vs. one ns per execution?)
+      value: "scenario-foo-ns"
+    - name: default_app_label
+      value: "nginx" # common target app label (app=nginx will target all pods of all configs in this yaml)
+    - name: app_kind
+      value: "deployment"
+    - name: container_runtime
+      value: "containerd" # replace with 'docker' if running using docker-desktop
+    - name: socket_path
+      value: "/run/containerd/containerd.sock" # for AKS, else change to your local (e.g. "/run/k3s/containerd/containerd.sock" or "/var/run/docker.sock")
+            # { "cpu_cores": "0", "target_usage": "20", "type"="cpu" "duration_seconds": "120", "replay" = "10", "target_label": "cpu_stressor=60cpu" }
+            # { "cpu_cores": "0", "target_usage": "80000", "type"="memory" "duration_seconds": "120", "replay" = "10", "target_label": "memory_stressor=80memory" }
+    - name: seq-list
+      value: |
+          [
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "20", "memory_bytes": "0", "duration_seconds": "120", "target_label": "stressor=20cpu" },
+            { "cpu_cores": "0", "cpu_load_min": "60", "cpu_load_max": "60", "memory_bytes": "0", "duration_seconds": "120", "target_label": "stressor=60cpu" }
+          ]
+    - name: target-app-configs # AKA workloads, since they represent the pods exhibiting the load/behaviors?
+      value: |
+          [
+            { "size": "small", "workload_id": "small-interactive-ads", "replicas": "30", "cpu_limit": "1000m", "memory_limit": "8Gi" },
+            { "size": "medium", "workload_id": "medium-interactive-ads", "replicas": "3", "cpu_limit": "2000m", "memory_limit": "16Gi" },
+            { "size": "large", "workload_id": "large-interactive-ads", "replicas": "5", "cpu_limit": "4000m", "memory_limit": "32Gi" },
+            { "size": "x-large", "workload_id": "x-large-interactive-ads", "replicas": "2", "cpu_limit": "8000m", "memory_limit": "64Gi" }
+          ]
+
+    - name: distribution-map # AKA workloads, since they represent the pods exhibiting the load/behaviors?
+            # {"workload_id": "x-large-interactive-ads",  "label": "cpu_stressor=60cpu", "distribution_cpu_limit": "5.9" }
+      value: |
+          [
+            {"workload_id": "small-interactive-ads",  "label": "stressor=20cpu", "distribution_cpu_limit": "91.6" },
+            {"workload_id": "small-interactive-ads",  "label": "stressor=60cpu", "distribution_cpu_limit": "8.1"  },
+            {"workload_id": "medium-interactive-ads", "label":  "stressor=20cpu" , "distribution_cpu_limit": "95" },
+            {"workload_id": "medium-interactive-ads", "label":  "stressor=60cpu" , "distribution_cpu_limit": "5"  },
+            {"workload_id": "large-interactive-ads",  "label": "stressor=20cpu", "distribution_cpu_limit": "96.8" },
+            {"workload_id": "large-interactive-ads",  "label": "stressor=60cpu", "distribution_cpu_limit": "3.2"  },
+            {"workload_id": "x-large-interactive-ads",  "label": "stressor=20cpu", "distribution_cpu_limit": "94.1" },
+            {"workload_id": "x-large-interactive-ads",  "label": "stressor=60cpu", "distribution_cpu_limit": "5.9" }
+          ]
+
+    ## TODO Explore this structure for the distribution map
+    # - name: distribution-map # AKA workloads, since they represent the pods exhibiting the load/behaviors?
+    #   value: |
+    #       [
+    #         {"size": "small-interactive-ads",  "distribution":
+    #           [ {"cpu_stressor=20cpu", "change_probability": "50"},
+    #            {"cpu_stressor=40cpu", "change_probability": "15"},
+    #            {"cpu_stressor=50cpu", "change_probability": "10"},
+    #            {"cpu_stressor=60cpu", "change_probability": "5"},
+    #             {"cpu_stressor=90cpu2", "change_probability": "20"} ] },
+    #         {"size": "medium-interactive-ads",  "distribution":
+    #           [ {"cpu_stressor=20cpu", "change_probability": "70"},
+    #             {"cpu_stressor=60cpu2", "change_probability": "30"} ] },
+    #         {"size": "large-interactive-ads",  "distribution":
+    #           [ {"cpu_stressor=20cpu", "change_probability": "60"},
+    #             {"cpu_stressor=60cpu2", "change_probability": "40"} ] },
+    #         {"size": "x-large-interactive-ads",  "distribution":
+    #           [ {"cpu_stressor=20cpu", "change_probability": "90"},
+    #             {"cpu_stressor=60cpu2", "change_probability": "10"} ] }
+    #       ]
+
+  entrypoint: main # defines the top-level sequence of steps
+  templates:
+  - name: main
+    steps:
+    - - name: deploy-target-apps # create the pods we will be injecting chaos into
+        arguments: 
+          parameters:
+          - name: app_namespace
+            value: "{{workflow.parameters.app_namespace}}"
+          - name: scenario_id
+            value: "{{workflow.parameters.scenario_id}}"
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: default_app_label
+            value: "{{workflow.parameters.default_app_label}}"
+          - name: target-app-configs
+            value: "{{workflow.parameters.target-app-configs}}"
+        templateRef:
+          name: execute-deploy-target-apps
+          template: deploy-target-apps
+      - name: iterate-behaviors # iterate through the sequence of defined behaviors
+        arguments:
+          parameters:
+          - name: chaos_service_account
+            value: "{{workflow.parameters.chaos_service_account}}"
+          - name: chaos_namespace
+            value: "{{workflow.parameters.chaos_namespace}}"
+          - name: app_namespace
+            value: "{{workflow.parameters.app_namespace}}"
+          - name: app_kind
+            value: "{{workflow.parameters.app_kind}}"
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: container_runtime
+            value: "{{workflow.parameters.container_runtime}}"
+          - name: socket_path
+            value: "{{workflow.parameters.socket_path}}"
+          - name: seq-list
+            value: "{{workflow.parameters.seq-list}}"
+        templateRef:
+          name: execute-iterate-behaviors-loop
+          template: iterate-behaviors-looper 
+      - name: manage-distribution # iterate through the sequence of defined behaviors
+        arguments:
+          parameters:
+          - name: app_namespace
+            value: "{{workflow.parameters.app_namespace}}"
+          - name: distribution-map
+            value: "{{workflow.parameters.distribution-map}}"
+        templateRef:
+          name: execute-distribution-manager
+          template: iterate-distribution-map
+    - - name: revert-chaos # delete the created ChaosEngines
+        arguments:
+          parameters:
+          - name: execution_id
+            value: "{{workflow.parameters.execution_id}}"
+          - name: chaos_namespace
+            value: "{{workflow.parameters.chaos_namespace}}"
+        templateRef:
+          name: execute-revert-chaos
+          template: revert-chaos
