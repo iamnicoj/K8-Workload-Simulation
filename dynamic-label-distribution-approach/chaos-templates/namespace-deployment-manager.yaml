@@ -1,0 +1,71 @@
+# deployment-deploy-app-namespace
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deployment-deploy-app-namespace
+spec:
+  entrypoint: deploy-app-namespace
+  templates:
+    - name: deploy-app-namespace
+      inputs:
+        parameters:
+        - name: app_namespace
+        artifacts:
+          - name: target-app-namespace
+            path: /tmp/namespace-{{inputs.parameters.app_namespace}}.yaml
+            raw:
+              data: |
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: {{inputs.parameters.app_namespace}}
+                  labels:
+                    mode: ephemeral
+      container:
+        image: litmuschaos/k8s:latest
+        command:
+          - sh
+          - -c
+        args:
+          - "kubectl apply -f /tmp/namespace-{{inputs.parameters.app_namespace}}.yaml; echo 'Created app namespace'"
+---
+# deployment-delete-app-namespace
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deployment-delete-app-namespace
+spec:
+  entrypoint: delete-app-namespace
+  templates:
+    - name: delete-app-namespace
+      inputs:
+        parameters:
+        - name: app_namespace
+      container:
+        image: litmuschaos/k8s:latest
+        command:
+          - sh
+          - -c
+        args:
+          - "kubectl delete namespace {{inputs.parameters.app_namespace}}; echo 'Deleted app namespace'"
+---
+# deployment-revert-chaos
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: deployment-revert-chaos
+spec:
+  entrypoint: revert-chaos
+  templates:
+    - name: revert-chaos
+      inputs:
+        parameters:
+        - name: execution_id
+        - name: chaos_namespace
+      container:
+        image: litmuschaos/k8s:latest
+        command:
+          - sh
+          - -c
+        args:
+          - "kubectl delete chaosengine -l executionId={{inputs.parameters.execution_id}} -n {{inputs.parameters.chaos_namespace}}"

@@ -1,0 +1,337 @@
+# This yaml is a basic example shared on the LitmusChaos Slack channel for troubleshooting the litmusctl create scenarios workflow
+# It works when executed from the chaosCenter UI but it fails when executed from the litmusctl create scenario method with a generic graphql error
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  # generateName: basic-workload3-ctl-
+  name: basic-workload-1234
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+  arguments:
+    parameters:
+    - name: chaos_namespace
+      value: "litmus"
+    - name: chaos_duration
+      value: "30" # duration of a chaos step in seconds (5 min)
+    - name: chaos_service_account
+      value: "argo-chaos"
+    - name: app_namespace
+      value: "default" # target app namespace
+    - name: app_label
+      value: "app=nginx" # target app label selector
+    - name: app_kind
+      value: "deployment" # target app kind
+    - name: app_name
+      value: "nginx"
+    - name: container_runtime
+      value: "containerd" # replace with 'docker' if running using docker-desktop
+    - name: socket_path
+      value: "/run/containerd/containerd.sock" # for AKS, else change to your local (e.g. "/run/k3s/containerd/containerd.sock" or "/var/run/docker.sock")
+    - name: seq-list-1
+      value: |
+          [
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "30", "memory_consumption": "500" },
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "30", "memory_consumption": "1000" },
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "30", "memory_consumption": "1500" }
+          ]
+    - name: seq-list-2
+      value: |
+          [
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "30", "memory_consumption": "250" },
+            { "cpu_cores": "0", "cpu_load_min": "20", "cpu_load_max": "30", "memory_consumption": "1500" }
+          ]
+ 
+  entrypoint: main # defines the top-level sequence of steps
+  templates:
+  # ================= TOP-LEVEL STEPS =================
+  - name: main
+    inputs:
+      parameters:
+      - name: seq-list-1
+      - name: seq-list-2
+    steps:
+    - - name: install-chaos-experiments
+        template: install-chaos-experiments
+    - - name: deploy-target-app # create the pod we will be injecting chaos into
+        template: deploy-target-app
+    - - name: flip-coin # choose between seq-list-1 or seq-list-2
+        template: flip-coin
+    - - name: heads # seq-list-1 will be used 50% the time
+        arguments:
+          parameters:
+          - name: seq-list
+            value: "{{inputs.parameters.seq-list-1}}"
+        template:  iterate-behavior-seq
+        when: "{{steps.flip-coin.outputs.result}} == heads"
+      - name: tails # seq-list-2 will be used the other 50% the time
+        arguments:
+          parameters:
+          - name: seq-list
+            value: "{{inputs.parameters.seq-list-2}}"
+        template:  iterate-behavior-seq
+        when: "{{steps.flip-coin.outputs.result}} == tails"
+    - - name: revert-chaos # delete the created ChaosEngines
+        template: revert-chaos
+    - - name: delete-target-app # delete the created target pod
+        template: delete-target-app
+    # TODO: define a step to delete all the helper pods Litmus leaves behind in the "Completed" state?
+  # ==================================================
+  - name: install-chaos-experiments
+    container:
+      image: litmuschaos/k8s:latest
+      command:
+        - sh
+        - -c
+      args:
+        - kubectl apply -f https://hub.litmuschaos.io/api/chaos/2.14.0\?file\=charts/generic/experiments.yaml -n litmus ; sleep 5
+  # ==================== HELPERS  ====================
+  # randomly select heads or tails
+  - name: flip-coin
+    script:
+      image: python:alpine3.6
+      command: [python]
+      source: |
+        import random
+        result = "heads" if random.randint(0,1) == 0 else "tails"
+        print(result)
+        exit(0)
+ 
+  # randomly select a value between a given min and max
+  - name: value-in-range
+    inputs:
+      parameters:
+      - name: min
+      - name: max
+    script:
+      image: python:alpine3.6
+      command: [python]
+      source: |
+        import random
+        min = {{inputs.parameters.min}}
+        max = {{inputs.parameters.max}}
+        result = random.randint(min,max)
+        print(result)
+        exit(0)
+  # ==================================================
+ 
+  # =================== TEMPLATES  ===================
+  # delay for specified amount of time
+  - name: delay
+    inputs:
+      parameters:
+      - name: duration
+    suspend:
+      duration: "{{inputs.parameters.duration}}" # Must be a string. Default unit is seconds. Could also be a Duration, e.g.: "2m", "6h", "1d"
+ 
+  # deploy some target application
+  - name: deploy-target-app
+    inputs:
+      artifacts:
+        # TODO: define some sort of scenario/workload ID in the labels instead of just app=nginx?
+        - name: app-deployment
+          path: /tmp/nginx-deployment.yaml
+          raw:
+            data: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: {{workflow.parameters.app_name}}
+              spec:
+                selector:
+                  matchLabels:
+                    app: nginx
+                replicas: 1
+                template:
+                  metadata:
+                    labels:
+                      app: nginx
+                  spec:
+                    containers:
+                    - name: nginx
+                      image: nginx:1.14.2
+                      ports:
+                      - containerPort: 80
+    container:
+      image: litmuschaos/k8s:latest
+      command:
+        - sh
+        - -c
+      args:
+        - "kubectl apply -f /tmp/nginx-deployment.yaml -n {{workflow.parameters.app_namespace}} ; echo 'Deployed target app'"
+ 
+ 
+  # iterate sequence and map individual behavior definition to yaml fields
+  - name: iterate-behavior-seq
+    parallelism: 1
+    inputs:
+      parameters:
+      - name: seq-list
+    steps:
+    - - name: behavior
+        template: run-behavior
+        arguments:
+          parameters:
+          - name: cpu_cores
+            value: "{{item.cpu_cores}}"
+          - name: cpu_load_min
+            value: "{{item.cpu_load_min}}"
+          - name: cpu_load_max
+            value: "{{item.cpu_load_max}}"
+          - name: memory_consumption
+            value: "{{item.memory_consumption}}"
+        withParam: "{{inputs.parameters.seq-list}}"
+ 
+  # define flow of an individual combined behavior step
+  - name: run-behavior
+    inputs:
+      parameters:
+      - name: cpu_cores
+      - name: cpu_load_min
+      - name: cpu_load_max
+      - name: memory_consumption
+    steps:
+    # select cpu_load between the defined min and max
+    - - name: randomize-cpu-load
+        template: value-in-range
+        arguments:
+          parameters:
+          - name: min
+            value: "{{inputs.parameters.cpu_load_min}}"
+          - name: max
+            value: "{{inputs.parameters.cpu_load_max}}"
+    # a compute behavior step is comprised of two parallel components:
+      # cpu-focused component
+    - - name: run-pod-cpu-behavior
+        template: pod-cpu-behavior
+        arguments:
+          parameters:
+          - name: cpu_cores
+            value: "{{inputs.parameters.cpu_cores}}"
+          - name: cpu_load
+            value: "{{steps.randomize-cpu-load.outputs.result}}"
+      # memory-focused component
+      - name: run-pod-memory-behavior
+        template: pod-memory-behavior
+        arguments:
+          parameters:
+          - name: memory_consumption
+            value: "{{inputs.parameters.memory_consumption}}"
+ 
+  # configure pod cpu behavior
+  - name: pod-cpu-behavior
+    inputs:
+      parameters:
+      - name: cpu_cores
+      - name: cpu_load
+      artifacts:
+        - name: pod-cpu-behavior
+          path: /tmp/chaosengine-pod-cpu-behavior.yaml
+          raw:
+            data: |
+              apiVersion: litmuschaos.io/v1alpha1
+              kind: ChaosEngine
+              metadata:
+                namespace: {{workflow.parameters.chaos_namespace}}
+                generateName: pod-cpu-engine-
+                labels:
+                  instance_id: 86a4f130-d99b-4e91-b34b-8f9eee22cb63
+              spec:
+                appinfo:
+                  appns: {{workflow.parameters.app_namespace}}
+                  applabel: {{workflow.parameters.app_label}}
+                  appkind: {{workflow.parameters.app_kind}}
+                engineState: active
+                chaosServiceAccount: {{workflow.parameters.chaos_service_account}}
+                experiments:
+                  - name: pod-cpu-hog
+                    spec:
+                      components:
+                        env:
+                          - name: CPU_CORES
+                            value: "{{inputs.parameters.cpu_cores}}"
+                          - name: TOTAL_CHAOS_DURATION
+                            value: "{{workflow.parameters.chaos_duration}}"
+                          - name: CPU_LOAD
+                            value: "{{inputs.parameters.cpu_load}}"
+                          - name: CONTAINER_RUNTIME
+                            value: "{{workflow.parameters.container_runtime}}"       
+                          - name: SOCKET_PATH
+                            value: "{{workflow.parameters.socket_path}}"
+    container:
+      args:
+        - -file=/tmp/chaosengine-pod-cpu-behavior.yaml
+        - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      command: ["./var/run/checker"]
+ 
+  # configure pod memory behavior
+  - name: pod-memory-behavior
+    inputs:
+      parameters:
+      - name: memory_consumption
+      artifacts:
+        - name: pod-memory-behavior
+          path: /tmp/chaosengine-pod-memory-behavior.yaml
+          raw:
+            data: |
+              apiVersion: litmuschaos.io/v1alpha1
+              kind: ChaosEngine
+              metadata:
+                namespace: {{workflow.parameters.chaos_namespace}}
+                generateName: pod-memory-engine-
+                labels:
+                  instance_id: 86a4f130-d99b-4e91-b34b-8f9eee22cb63
+              spec:
+                appinfo:
+                  appns: {{workflow.parameters.app_namespace}}
+                  applabel: {{workflow.parameters.app_label}}
+                  appkind: {{workflow.parameters.app_kind}}
+                engineState: active
+                chaosServiceAccount: {{workflow.parameters.chaos_service_account}}
+                experiments:
+                  - name: pod-memory-hog
+                    spec:
+                      components:
+                        env:
+                          - name: MEMORY_CONSUMPTION
+                            value: "{{inputs.parameters.memory_consumption}}"
+                          - name: TOTAL_CHAOS_DURATION
+                            value: "{{workflow.parameters.chaos_duration}}"
+                          - name: CONTAINER_RUNTIME
+                            value: "{{workflow.parameters.container_runtime}}"       
+                          - name: SOCKET_PATH
+                            value: "{{workflow.parameters.socket_path}}"
+    container:
+      args:
+        - -file=/tmp/chaosengine-pod-memory-behavior.yaml
+        - -saveName=/tmp/engine-name
+      image: litmuschaos/litmus-checker:latest
+      command: ["./var/run/checker"]
+ 
+  # defined behavior to revert chaos
+  - name: revert-chaos
+    container:
+      image: litmuschaos/k8s:latest
+      command:
+        - sh
+        - -c
+      args:
+        - "kubectl delete chaosengine -l 'instance_id in
+          (86a4f130-d99b-4e91-b34b-8f9eee22cb63, )' -n
+          {{workflow.parameters.chaos_namespace}} "
+ 
+  # defined behavior to revert chaos
+  - name: delete-target-app
+    container:
+      image: litmuschaos/k8s:latest
+      command:
+        - sh
+        - -c
+      args:
+        - "kubectl delete deployment {{workflow.parameters.app_name}} -n {{workflow.parameters.app_namespace}}"
+  # ==================================================
+ 
+ 
+ 

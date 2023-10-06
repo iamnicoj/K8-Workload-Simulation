@@ -1,0 +1,100 @@
+  # print helper
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: print-helper
+spec:
+  entrypoint: print-value
+  templates:
+    - name: print-value
+      inputs:
+        parameters:
+        - name: subject
+        - name: list
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          print("{{inputs.parameters.subject}}")
+          print({{inputs.parameters.list}})
+          exit(0)
+---
+  # value-in-range-helper
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: value-in-range-helper
+spec:
+  entrypoint: value-in-range
+  templates:
+    - name: value-in-range
+      inputs:
+        parameters:
+        - name: min
+        - name: max
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          import random
+          from datetime import datetime
+          min = {{inputs.parameters.min}}
+          max = {{inputs.parameters.max}}
+          random.seed(datetime.now().timestamp())
+          result = random.randint(min,max)
+          print(result)
+          exit(0)
+---
+# gen-number-list-helper
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: gen-number-list-helper
+spec:
+  entrypoint: gen-number-list
+  templates:
+    - name: gen-number-list
+      inputs:
+        parameters:
+        - name: max-number
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          import json
+          import sys
+          json.dump([i for i in range(1, {{inputs.parameters.max-number}} + 1)], sys.stdout)
+---
+# delay-helper
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: delay-helper
+spec:
+  entrypoint: delay
+  templates:
+    - name: delay
+      inputs:
+        parameters:
+        - name: duration
+      suspend:
+        duration: "{{inputs.parameters.duration}}" # Must be a string. Default unit is seconds. Could also be a Duration, e.g.: "2m", "6h", "1d"
+
+# generate random execution id
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: random-execution-id
+spec:
+  entrypoint: execution-id
+  templates:
+    - name: execution-id
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          import uuid
+          print(uuid.uuid4())
+          exit(0)
+---

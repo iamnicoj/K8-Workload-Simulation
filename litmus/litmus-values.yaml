@@ -1,0 +1,16 @@
+portal:
+  frontend:
+    nodeSelector:
+      mode: chaos
+  server:
+    nodeSelector:
+      mode: chaos
+    graphqlServer:
+      genericEnv:
+        SELF_AGENT_NODE_SELECTOR: "mode=chaos"
+upgradeAgent:
+  nodeSelector:
+    mode: chaos
+mongodb:
+  nodeSelector:
+    mode: chaos

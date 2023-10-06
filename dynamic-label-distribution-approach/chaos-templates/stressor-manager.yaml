@@ -1,0 +1,589 @@
+# execute-stressors-manager
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-stressors-manager
+spec:
+  entrypoint: execute-stressors-manager
+  templates:
+    - name: execute-stressors-manager
+      # parallelism: 1
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: stressors_duration
+        - name: cpu_stressors
+        - name: mem_stressors
+      steps:
+      - - name: execute-cpu-stressors-manager
+          templateRef:
+            name: execute-cpu-stressor-loop
+            template: execute-cpu-stressor-loop
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+            - name: cpu_stressors
+              value: "{{inputs.parameters.cpu_stressors}}"
+        - name: execute-mem-stressors-manager
+          templateRef:
+            name: execute-mem-stressor-loop
+            template: execute-mem-stressor-loop
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+            - name: mem_stressors
+              value: "{{inputs.parameters.mem_stressors}}"
+        - name: execute-io-experiment
+          templateRef:
+            name: execute-io-experiment
+            template: execute-io-experiment
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+---
+# execute-cpu-stressor-loop
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-cpu-stressor-loop
+spec:
+  entrypoint: execute-cpu-stressor-loop
+  templates:
+    # iterate sequence and map individual behavior definition to yaml fields
+    - name: execute-cpu-stressor-loop
+      parallelism: 10
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: stressors_duration
+        - name: socket_path
+        - name: cpu_stressors
+      steps:
+      - - name: behavior
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: target_label
+              value: "{{item.target_label}}"
+            - name: cpu_load_min
+              value: "{{item.cpu_load_min}}"
+            - name: cpu_load_max
+              value: "{{item.cpu_load_max}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+          templateRef:
+            name: execute-cpu-experiment
+            template: execute-cpu-experiment
+          withParam: "{{inputs.parameters.cpu_stressors}}"
+---
+# execute-mem-stressor-loop
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-mem-stressor-loop
+spec:
+  entrypoint: execute-mem-stressor-loop
+  templates:
+    # iterate sequence and map individual behavior definition to yaml fields
+    - name: execute-mem-stressor-loop
+      parallelism: 10
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: stressors_duration
+        - name: socket_path
+        - name: mem_stressors
+      steps:
+      - - name: behavior
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: target_label
+              value: "{{item.target_label}}"
+            - name: memory_bytes
+              value: "{{item.memory}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+          templateRef:
+            name: execute-pod-memory-behavior
+            template: pod-memory-behavior
+          withParam: "{{inputs.parameters.mem_stressors}}"
+---
+# execute-cpu-experiment
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-cpu-experiment
+spec:
+  entrypoint: execute-cpu-experiment
+  templates:
+    # define flow of an individual combined behavior step
+    - name: execute-cpu-experiment
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: target_label
+        - name: cpu_load_min
+        - name: cpu_load_max
+        - name: stressors_duration
+      steps:
+      # select cpu_load between the defined min and max
+      - - name: randomize-cpu-load
+          templateRef:
+            name: value-in-range-helper
+            template: value-in-range
+          arguments:
+            parameters:
+            - name: min
+              value: "{{inputs.parameters.cpu_load_min}}"
+            - name: max
+              value: "{{inputs.parameters.cpu_load_max}}"
+      # a compute behavior step is comprised of two parallel components:
+      - - name: run-pod-cpu-behavior
+          templateRef:
+            name: execute-pod-cpu-behavior
+            template: pod-cpu-behavior
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: target_label
+              value: "{{inputs.parameters.target_label}}"
+            - name: cpu_load
+              value: "{{steps.randomize-cpu-load.outputs.result}}"
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+---
+# execute-io-experiment
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-io-experiment
+spec:
+  entrypoint: execute-io-experiment
+  templates:
+    # define flow of an individual combined behavior step
+    - name: execute-io-experiment
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: stressors_duration
+      steps:
+      # select io utilization
+      - - name: select-io-utilization
+          templateRef:
+            name: io-utilization
+            template: io-utilization
+          arguments:
+            parameters:
+            - name: disk_io_min_value
+              value: 1
+            - name: disk_io_max_value
+              value: 5
+      - - name: select-io-duration
+          templateRef:
+            name: io-duration
+            template: io-duration
+          arguments:
+            parameters:
+            - name: stressors_duration
+              value: "{{inputs.parameters.stressors_duration}}"
+            - name: io_duration
+              value: 300
+      - - name: run-pod-io-behavior
+          templateRef:
+            name: execute-pod-io-behavior
+            template: pod-io-behavior
+          arguments:
+            parameters:
+            - name: chaos_service_account
+              value: "{{inputs.parameters.chaos_service_account}}"
+            - name: chaos_namespace
+              value: "{{inputs.parameters.chaos_namespace}}"
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: app_kind
+              value: "{{inputs.parameters.app_kind}}"
+            - name: execution_id
+              value: "{{inputs.parameters.execution_id}}"
+            - name: container_runtime
+              value: "{{inputs.parameters.container_runtime}}"
+            - name: socket_path
+              value: "{{inputs.parameters.socket_path}}"
+            - name: target_label
+              value: "scenarioId=10-interactive-ads-workloads"
+              # TODO: hardcoded value was "executionId={{inputs.parameters.execution_id}}"
+            - name: filesystem_utilization_bytes
+              value: "{{steps.select-io-utilization.outputs.result}}"
+            - name: stressors_duration
+              value: "{{steps.select-io-duration.outputs.result}}"
+---
+# io-utilization
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: io-utilization
+spec:
+  entrypoint: io-utilization
+  templates:
+    - name: io-utilization
+      inputs:
+        parameters:
+        - name: disk_io_min_value
+        - name: disk_io_max_value
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          import random
+          from datetime import datetime
+          min = 1
+          max = 100
+          random.seed(datetime.now().timestamp())
+          random_number = random.randint(min,max)
+          if random_number <= 20:
+            print({{inputs.parameters.disk_io_max_value}})
+          else:
+            print({{inputs.parameters.disk_io_min_value}})
+---
+# io-duration
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: io-duration
+spec:
+  entrypoint: io-duration
+  templates:
+    - name: io-duration
+      inputs:
+        parameters:
+        - name: stressors_duration
+        - name: io_duration
+      script:
+        image: python:alpine3.6
+        command: [python]
+        source: |
+          io_duration = {{inputs.parameters.io_duration}}
+          stressors_duration = {{inputs.parameters.stressors_duration}}
+          if io_duration < stressors_duration:
+            print(io_duration)
+          else:
+            print(stressors_duration)
+---
+# execute-pod-cpu-behavior
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-pod-cpu-behavior # inject cpu behavior into target apps
+spec:
+  entrypoint: pod-cpu-behavior
+  templates:
+    - name: pod-cpu-behavior
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: target_label
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: cpu_load
+        - name: stressors_duration
+        artifacts:
+          - name: pod-cpu-behavior
+            path: /tmp/chaosengine-pod-cpu-behavior.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  namespace: {{inputs.parameters.chaos_namespace}}
+                  generateName: pod-cpu-engine-
+                  labels:
+                    executionId: {{inputs.parameters.execution_id}}
+                spec:
+                  appinfo:
+                    appns: {{inputs.parameters.app_namespace}}
+                    applabel: {{inputs.parameters.target_label}}
+                    appkind: {{inputs.parameters.app_kind}}
+                  engineState: active
+                  chaosServiceAccount: {{inputs.parameters.chaos_service_account}}
+                  components:
+                    runner:
+                      nodeSelector:
+                        mode: chaos
+                  experiments:
+                    - name: pod-cpu-hog
+                      spec:
+                        components:
+                          env:
+                            - name: CPU_CORES
+                              value: "0"
+                            - name: TOTAL_CHAOS_DURATION
+                              value: "{{inputs.parameters.stressors_duration}}"
+                            - name: CPU_LOAD
+                              value: "{{inputs.parameters.cpu_load}}"
+                            - name: CONTAINER_RUNTIME
+                              value: "{{inputs.parameters.container_runtime}}"
+                            - name: SOCKET_PATH
+                              value: "{{inputs.parameters.socket_path}}"
+                            - name: PODS_AFFECTED_PERC
+                              value: "100"
+                        nodeSelector:
+                          mode: chaos
+      container:
+        args:
+          - -file=/tmp/chaosengine-pod-cpu-behavior.yaml
+          - -saveName=/tmp/engine-name
+        image: litmuschaos/litmus-checker:latest
+        command: ["./var/run/checker"]
+---
+# execute-pod-memory-behavior
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-pod-memory-behavior # inject memory behavior into target apps
+spec:
+  entrypoint: pod-memory-behavior
+  templates:
+    - name: pod-memory-behavior
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: target_label
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: memory_bytes
+        - name: stressors_duration
+        artifacts:
+          - name: pod-memory-behavior
+            path: /tmp/chaosengine-pod-memory-behavior.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  namespace: {{inputs.parameters.chaos_namespace}}
+                  generateName: pod-memory-engine-
+                  labels:
+                    executionId: {{inputs.parameters.execution_id}}
+                spec:
+                  appinfo:
+                    appns: {{inputs.parameters.app_namespace}}
+                    applabel: {{inputs.parameters.target_label}}
+                    appkind: {{inputs.parameters.app_kind}}
+                  engineState: active
+                  chaosServiceAccount: {{inputs.parameters.chaos_service_account}}
+                  components:
+                    runner:
+                      nodeSelector:
+                        mode: chaos
+                  experiments:
+                    - name: pod-memory-hog
+                      spec:
+                        components:
+                          env:
+                            - name: MEMORY_CONSUMPTION
+                              value: "{{inputs.parameters.memory_bytes}}"
+                            - name: TOTAL_CHAOS_DURATION
+                              value: "{{inputs.parameters.stressors_duration}}"
+                            - name: CONTAINER_RUNTIME
+                              value: "{{inputs.parameters.container_runtime}}"
+                            - name: SOCKET_PATH
+                              value: "{{inputs.parameters.socket_path}}"
+                            - name: PODS_AFFECTED_PERC
+                              value: "100"
+                        nodeSelector:
+                          mode: chaos
+      container:
+        args:
+          - -file=/tmp/chaosengine-pod-memory-behavior.yaml
+          - -saveName=/tmp/engine-name
+        image: litmuschaos/litmus-checker:latest
+        command: ["./var/run/checker"]
+---
+# execute-pod-io-behavior
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-pod-io-behavior
+spec:
+  entrypoint: pod-io-behavior
+  templates:
+    - name: pod-io-behavior
+      inputs:
+        parameters:
+        - name: chaos_service_account
+        - name: chaos_namespace
+        - name: app_namespace
+        - name: target_label
+        - name: app_kind
+        - name: execution_id
+        - name: container_runtime
+        - name: socket_path
+        - name: filesystem_utilization_bytes
+        - name: stressors_duration # To be changed based to simulate spike
+        artifacts:
+          - name: pod-disk-io-behavior
+            path: /tmp/chaosengine-pod-disk-io-behavior.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  namespace: {{inputs.parameters.chaos_namespace}}
+                  generateName: pod-disk-io-
+                  labels:
+                    executionId: {{inputs.parameters.execution_id}}
+                spec:
+                  appinfo:
+                    appns: {{inputs.parameters.app_namespace}}
+                    applabel: {{inputs.parameters.target_label}}
+                    appkind: {{inputs.parameters.app_kind}}
+                  engineState: active
+                  chaosServiceAccount: {{inputs.parameters.chaos_service_account}}
+                  components:
+                    runner:
+                      nodeSelector:
+                        mode: chaos
+                  experiments:
+                    - name: pod-io-stress
+                      spec:
+                        components:
+                          env:
+                            - name: FILESYSTEM_UTILIZATION_BYTES
+                              value: "{{inputs.parameters.filesystem_utilization_bytes}}"
+                            - name: TOTAL_CHAOS_DURATION
+                              value: "{{inputs.parameters.stressors_duration}}"
+                            - name: CONTAINER_RUNTIME
+                              value: "{{inputs.parameters.container_runtime}}"
+                            - name: SOCKET_PATH
+                              value: "{{inputs.parameters.socket_path}}"
+                            - name: PODS_AFFECTED_PERC
+                              value: "100"
+                        nodeSelector:
+                          mode: chaos
+      container:
+        args:
+          - -file=/tmp/chaosengine-pod-disk-io-behavior.yaml
+          - -saveName=/tmp/engine-name
+        image: litmuschaos/litmus-checker:latest
+        command: ["./var/run/checker"]
+---

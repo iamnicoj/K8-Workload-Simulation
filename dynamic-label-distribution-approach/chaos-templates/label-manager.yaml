@@ -1,0 +1,106 @@
+# execute-label-manager
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-labels-manager-sl
+spec:
+  entrypoint: execute-labels-manager-sl
+  templates:
+    - name: execute-labels-manager-sl
+      inputs:
+        parameters:
+        - name: app_namespace
+        - name: cpu_distribution_map
+        - name: mem_distribution_map
+      steps:
+      - - name: cpu-label-manager
+          templateRef:
+            name: execute-label-distributor
+            template: label-distributor
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: stressor_label
+              value: "cpu_stressor"
+            - name: distribution_map
+              value: "{{inputs.parameters.cpu_distribution_map}}"
+        - name: mem-label-manager
+          templateRef:
+            name: execute-label-distributor
+            template: label-distributor
+          arguments:
+            parameters:
+            - name: app_namespace
+              value: "{{inputs.parameters.app_namespace}}"
+            - name: distribution_map
+              value: "{{inputs.parameters.mem_distribution_map}}"
+---
+# execute-label-distributor
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: execute-label-distributor
+spec:
+  entrypoint: label-distributor
+  templates:
+    - name: label-distributor
+      inputs:
+        parameters:
+        - name: app_namespace
+        - name: distribution_map
+        artifacts:
+          - name: target-app-pod
+            path: /tmp/label-distributor.sh
+            raw:
+              data: |
+                #!/bin/bash
+
+                apk add jq
+
+                distribution='{{inputs.parameters.distribution_map}}'
+
+                sizes=($(echo $distribution | jq -c '.[] | .size' | sort | uniq))
+                for size in ${sizes[@]}; do
+
+                    size_noquote=${size//\"}
+                    echo "Size $size_noquote"
+
+                    for pod in $(kubectl get pods -o name -l size=$size_noquote  -n {{inputs.parameters.app_namespace}} --field-selector status.phase=Running); do
+                        echo "pod name $pod"
+
+                        echo "size again $size_noquote"
+
+
+                        probability=($(echo $distribution | jq -c '.[] | select(.size == '$size') | "\(.percentage)"'))
+                        labels=($(echo $distribution | jq -r '.[] | select(.size == '$size') | " \(.label)"'))
+
+                        random_number=$((RANDOM % 100))
+                        count=0
+
+                        echo "Random number: $random_number"
+                        index=0
+                        for i in ${probability[@]}; do
+
+                            i=${i//\"}
+                            echo "current probability $i"
+                            count=$((count + i))
+                            echo "counter $count"
+
+                            if [[ $random_number -le $count ]]; then
+                            echo ${labels[index]}
+                                kubectl label $pod ${labels[index]} -n {{inputs.parameters.app_namespace}} --overwrite
+                                break
+                            fi
+                            index=$((index + 1))
+                        done
+                done
+                done
+      container:
+      # TODO: change for a better defined image
+        image: piotrzan/kubectl-comp
+        command:
+          - sh
+          - -c
+        args:
+          - "cd /tmp/; chmod a+x ./label-distributor.sh ; ./label-distributor.sh ; echo 'Labels applied!'"
